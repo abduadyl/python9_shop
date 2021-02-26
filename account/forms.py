@@ -5,8 +5,6 @@ from account.utils import send_activation_mail
 
 User = get_user_model()
 
-
-
 class RegistrationForm(forms.ModelForm):
     password = forms.CharField(min_length=8, required=True, widget=forms.PasswordInput)
     password_confirmation = forms.CharField(min_length=8, required=True, widget=forms.PasswordInput)

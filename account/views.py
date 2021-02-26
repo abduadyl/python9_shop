@@ -27,7 +27,7 @@ class ActivationView(View):
         user.is_active = True
         user.activation_code = ''
         user.save()
-        return render(request, 'account/activation.html', {})
+        return render(request, 'account/activation.html')
 
 
 class SigninView(LoginView):

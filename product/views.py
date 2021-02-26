@@ -1,83 +1,23 @@
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.http import Http404
-from django.shortcuts import render, get_list_or_404, get_object_or_404
-from django.views.generic import ListView, DetailView
+from django.shortcuts import render, get_list_or_404, get_object_or_404, redirect
+from django.urls import reverse_lazy
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.views.generic.base import View
 
-from product.models import Category, Product
-
-
-# def home_page(request):
-#     # SELECT * FROM product_category;
-#     categories = Category.objects.all()
-#                                         # ключ может быть любым
-#     return render(request, 'product/index.html', {'categories': categories})
-
-# class HomePageView(View):
-#     def get(self, request):
-#         categories = Category.objects.all()
-#         return render(request, 'product/index.html', {'categories': categories})
+from product.forms import CreateProductForm, UpdateProductForm, ImagesFormSet
+from product.models import Category, Product, ProductImage
 
 class HomePageView(ListView):
     model = Category
-    # queryset = Category.objects.filter(...)
     template_name = 'product/index.html'
     context_object_name = 'categories'
 
-
-
-
-# products/category
-# def products_list(request, category_slug):
-#     # product = Product.objects.all()
-#
-#     # Вариант 1
-#     # if Category.objects.filter(slug=category_slug).exists():
-#     #     raise Http404
-#     # # SELECT * FROM product WHERE category_id = category_slug
-#     # products = Product.objects.filter(category_id=category_slug)
-#
-#     # Вариант 2
-#     products = get_list_or_404(Product, category_id=category_slug)
-#
-#     # Вариант 3
-#     # category = get_object_or_404(Category, slug=category_slug)
-#     # products = Product.objects.filter(category=category)
-#
-#     return render(request, 'product/products_list.html', {'products': products})
-
-
-
-# products/?category=slug
-# def product_list2(request):
-#     category_slug = request.GET.get('category')
-#     products = Product.objects.all()
-#     if category_slug is not None:
-#         products = products.filter(category_id=category_slug)
-#     return render(request, '', {'products': products})
-
-# def products_list(request, category_slug):
-#     if not Category.objects.filter(slug=category_slug).exists():
-#         raise Http404('Нет такой категории')
-#     products = Product.objects.filter(category_id=category_slug)
-#     return render(request, 'product/products_list.html', {'products': products})
-
-# class ProductsListView(View):
-#     def get(self, request, category_slug):
-#         if not Category.objects.filter(slug=category_slug).exists():
-#             raise Http404('Нет такой категории')
-#         products = Product.objects.filter(category_id=category_slug)
-#         return render(request, 'product/products_list.html', {'products': products})
 
 class ProductsListView(ListView):
     model = Product
     template_name = 'product/products_list.html'
     context_object_name = 'products'
-
-    # def get(self, request, category_slug):
-    #     if not Category.objects.filter(slug=category_slug).exists():
-    #         raise Http404('Нет такой категории')
-    #     products = self.get_queryset().filter(category_id=category_slug)
-    #     return render(request, 'product/products_list.html', {'products': products})
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -88,13 +28,78 @@ class ProductsListView(ListView):
         return queryset
 
 
-# def product_details(request, product_id):
-#     product = get_object_or_404(Product, id=product_id)
-#     return render(request, 'product/product_details.html', {'product': product})
-
 class ProductDetailsView(DetailView):
     model = Product
     template_name = 'product/product_details.html'
+
+
+class IsAdminCheckMixin(UserPassesTestMixin):
+    def test_func(self):
+        return self.request.user.is_authenticated and\
+               (self.request.user.is_staff or self.request.user.is_superuser)
+
+
+class ProductCreateView(IsAdminCheckMixin, View):
+    def get(self, request):
+        form = CreateProductForm()
+        formset = ImagesFormSet(queryset=ProductImage.objects.none())
+        return render(request, 'product/create.html', locals())
+
+    def post(self, request):
+        form = CreateProductForm(request.POST)
+        formset = ImagesFormSet(request.POST,
+                                request.FILES,
+                                queryset=ProductImage.objects.none())
+
+        if form.is_valid() and formset.is_valid():
+            product = form.save()
+            for form in formset.cleaned_data:
+                image = form.get('image')
+                if image is not None:
+                    pic = ProductImage(product=product, image=image)
+                    pic.save()
+            return redirect(product.get_absolute_url())
+        print(form.errors, formset.errors)
+
+
+# products/edit/<int:pk>
+# Product.objects.get(pk=pk)
+class ProductEditView(IsAdminCheckMixin, View):
+    def get(self, request, pk):
+        product = get_object_or_404(Product, pk=pk)
+        form = CreateProductForm(instance=product)
+        formset = ImagesFormSet(queryset=product.images.all())
+        return render(request, 'product/edit.html', locals())
+
+    def post(self, request, pk):
+        product = get_object_or_404(Product, pk=pk)
+        form = CreateProductForm(instance=product, data=request.POST)
+        formset = ImagesFormSet(request.POST,
+                                request.FILES,
+                                queryset=product.images.all())
+
+        if form.is_valid() and formset.is_valid():
+            product = form.save()
+            for form in formset.cleaned_data:
+                image = form.get('image')
+                if not None and not ProductImage.objects.filter(product=product, image=image).exists():
+                    pic = ProductImage(product=product, image=image)
+                    pic.save()
+            for form in formset.deleted_forms:
+                image = form.cleaned_data.get('id')
+                if image is not None:
+                    image.delete()
+            return redirect(product.get_absolute_url())
+        print(form.errors, formset.errors)
+
+
+class ProductDeleteView(IsAdminCheckMixin, DeleteView):
+    model = Product
+    template_name = 'product/delete.html'
+    success_url = reverse_lazy('index-page')
+
+
+
 
 
 
